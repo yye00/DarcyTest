@@ -6,20 +6,12 @@ Created on Wed Oct 31 15:22:46 2012
 """
 
 
-Soc = 0.1
-Swirr = 0.2
-
 from cbc.pdesys import *
 set_log_active(True)
 set_log_level(5)
 
-#set_log_active(True)
-#set_log_level(5)
+mesh = UnitSquare(20, 20, "crossed")
 
-mesh = UnitSquare(20, 20)
-h = CellSize(mesh)
-
-print(DOLFIN_EPS)
 # setup the BCs
 def left(x, on_boundary):
     print "Left:", x
@@ -38,30 +30,6 @@ def allbounds(x):
         or x[1] < DOLFIN_EPS or x[1] > 1.0-DOLFIN_EPS
 
 
-class Structure(SubDomain):
-    def inside(self, x, on_boundary):
-        return x[0] > DOLFIN_EPS and x[0] < 1.0 - DOLFIN_EPS \
-          and x[1] > DOLFIN_EPS and x[1] < 1.0 - DOLFIN_EPS
-
-sub_domains = MeshFunction("uint", mesh, mesh.topology().dim())
-sub_domains.set_all(0)
-
-# Mark structure domain as 1
-structure = Structure()
-structure.mark(sub_domains, 1)
-structure.mark()
-
-# Extract sub meshes
-fluid_mesh = SubMesh(mesh, sub_domains, 0)
-structure_mesh = SubMesh(mesh, sub_domains, 1)
-
-# Plot meshes
-plot(fluid_mesh, title="Fluid")
-plot(structure_mesh, title="Structure")
-interactive()
-
-
-
 # add some optimization options
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
@@ -74,10 +42,9 @@ problem = Problem(mesh, problem_parameters)
 # Set up first PDESystem
 solver_parameters['space']['u'] = VectorFunctionSpace #
 default=FunctionSpace
-solver_parameters['degree']['u'] = 2 # default=1
+solver_parameters['degree']['u'] = 3 # default=1
 solver_parameters['degree']['p'] = 1 # default=1
 solver_parameters['degree']['Sw'] = 1 # default=1
-#solver_parameters['family']['Sw'] = 'DG'
 
 solver_parameters['familyname'] = 'Scalar'
 solver_parameters['iteration_type'] = 'Newton'
@@ -85,9 +52,11 @@ GloalFormulation = PDESystem([['u', 'p', 'Sw']], problem, solver_parameters)
 
 class DarcyGlobal(PDESubSystem):
     def form(self, u, u_, u_1, v_u, p, v_p, dt, Sw, Sw_, Sw_1, v_Sw, **kwargs):
-        # SUPG stablization
-        #u_norm = sqrt(dot(u,u))
-        #r =
+        # very simple relative permeability, permeability
+        # is set to one
+        # assume densities are one, incompressible flow
+        # assume porosity is 1, no capillary pressure
+        # and no gravity.
         Krw = Sw_
         Kro = 1.0 - Sw_
         Dlambda = Krw+Kro
@@ -115,6 +84,7 @@ def update(self):
 
 Problem.update = update
 
+# initialization has to be done this way according to CBC
 problem.q0 = {'upSw': Expression(('0', '0', '0', '0.0'), element=GloalFormulation.V['upSw'].ufl_element())}
 
 problem.initialize(GloalFormulation)
@@ -131,8 +101,6 @@ bc = [DirichletBC(GloalFormulation.V['upSw'].sub(0), inlet,  left),
       DirichletBC(GloalFormulation.V['upSw'].sub(0), noslip, top),
       DirichletBC(GloalFormulation.V['upSw'].sub(0), noslip, bottom)]
 
-#DirichletBC(GloalFormulation.V['upSw'].sub(2), Constant(0.0), right),
-#      DirichletBC(GloalFormulation.V['upSw'].sub(2), 0.0, right)]
 
 GloalFormulation.add_pdesubsystem(DarcyGlobal, ['u', 'p', 'Sw'], bcs=bc)
 
