@@ -10,7 +10,7 @@ from cbc.pdesys import *
 set_log_active(True)
 set_log_level(5)
 
-mesh = UnitSquare(20, 20,"crossed")
+mesh = UnitSquare(20, 20, "crossed")
 h = CellSize(mesh)
 
 # setup the BCs
@@ -61,6 +61,9 @@ problem.solve()
 plot(problem.pdesystems['Scalar'].u_, interactive=True, title="u", scale=0.1)
 plot(problem.pdesystems['Scalar'].p_, interactive=True, title="p")
 
+plot(project(mesh, grad(problem.pdesystems['Scalar'].u_),
+             FunctionSpace(mesh,"CG", 2)), interactive=True, title="div of u")
+             
 ufile  = File("results/velocity.pvd")
 pfile  = File("results/pressure.pvd")
 

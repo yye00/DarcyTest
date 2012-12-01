@@ -7,21 +7,59 @@ Created on Wed Oct 31 15:22:46 2012
 
 
 from cbc.pdesys import *
-set_log_active(True)
-set_log_level(5)
+#set_log_active(True)
+#set_log_level(5)
 
-mesh = UnitSquare(20, 20, "crossed")
+mesh = UnitSquare(32, 32,"crossed")
+
+class Noslip(SubDomain):
+    def inside(self, x, on_boundary):
+        return on_boundary
+
+# Sub domain for Outflow (right)
+class Outflow(SubDomain):
+    def inside(self, x, on_boundary):
+        return x[0] > 1.0 - DOLFIN_EPS and on_boundary
+
+# Sub domain for Inflow (left)
+class Inflow(SubDomain):
+    def inside(self, x, on_boundary):
+        return x[0] < DOLFIN_EPS and on_boundary
+
+# Read mesh
+mesh = UnitSquare(10,10, "crossed")
+plot(mesh, interactive=True)
+
+# Create mesh functions over the cell facets
+sub_domains = MeshFunction("uint", mesh, mesh.topology().dim() - 1)
+sub_domains_bool = MeshFunction("bool", mesh, mesh.topology().dim() - 1)
+sub_domains_double = MeshFunction("double", mesh, mesh.topology().dim() - 1)
+
+# Mark no-slip facets as sub domain 0, 0.0
+noslip = Noslip()
+#noslip.mark(sub_domains, 0)
+#noslip.mark(sub_domains_double, 0.0)
+
+# Mark inflow as sub domain 1, 01
+inflow1 = Inflow()
+#inflow1.mark(sub_domains, ('1.0', '0.0'))
+#inflow1.mark(sub_domains_double, ('1.0', '0.0'))
+#inflow1.mark
+
+# Mark inflow as sub domain 1, 01
+inflow2 = Inflow()
+#inflow2.mark(sub_domains, 1.0)
+#inflow2.mark(sub_domains_double, 0.1)
+
+# Mark outflow as sub domain 2, 0.2, True
+outflow = Outflow()
+#outflow.mark(sub_domains, 0.0)
+#outflow.mark(sub_domains_double, 0.2)
+#outflow.mark(sub_domains_bool, True)
+
 
 # setup the BCs
-def left(x, on_boundary):
-    print "Left:", x
-    if on_boundary :
-        print "on_boundary"
-    if x[0] < DOLFIN_EPS:
-        print "boundary"
-    else:
-        print "inside"
-    return on_boundary and x[0] < 1.0 / 20 - DOLFIN_EPS
+def left(x):   return x[0] < DOLFIN_EPS
 def right(x):  return x[0] > 1.0-DOLFIN_EPS
 def top(x):    return x[1] > 1.0-DOLFIN_EPS
 def bottom(x): return x[1] < DOLFIN_EPS
@@ -42,12 +80,13 @@ problem = Problem(mesh, problem_parameters)
 # Set up first PDESystem
 solver_parameters['space']['u'] = VectorFunctionSpace #
 default=FunctionSpace
-solver_parameters['degree']['u'] = 3 # default=1
+solver_parameters['degree']['u'] = 2 # default=1
 solver_parameters['degree']['p'] = 1 # default=1
 solver_parameters['degree']['Sw'] = 1 # default=1
+solver_parameters['family']['Sw'] = "DG"
 
 solver_parameters['familyname'] = 'Scalar'
-solver_parameters['iteration_type'] = 'Newton'
+solver_parameters['iteration_type'] = 'Picard'
 GloalFormulation = PDESystem([['u', 'p', 'Sw']], problem, solver_parameters)
 
 class DarcyGlobal(PDESubSystem):
@@ -74,8 +113,8 @@ Swfile = File("results/Sw.pvd")
 
 def update(self):
     plot(self.pdesystems['Scalar'].Sw_, title="Sw", scale=1.0)
-    plot(self.pdesystems['Scalar'].u_, title="u", scale=0.05)
-    plot(self.pdesystems['Scalar'].p_, title="p", scale=1.0)
+    plot(self.pdesystems['Scalar'].u_, title="u", scale=0.5)
+    plot(self.pdesystems['Scalar'].p_, title="p", scale=1.0, interactive=True)
     # Save to file
     ufile  << self.pdesystems['Scalar'].u_
     pfile  << self.pdesystems['Scalar'].p_
@@ -85,25 +124,26 @@ def update(self):
 Problem.update = update
 
 # initialization has to be done this way according to CBC
-problem.q0 = {'upSw': Expression(('0', '0', '0', '0.0'), element=GloalFormulation.V['upSw'].ufl_element())}
+problem.q0 = {'upSw': Expression(('0', '0', '0', '0.5'), element=GloalFormulation.V['upSw'].ufl_element())}
 
 problem.initialize(GloalFormulation)
 
 
 noslip = Constant((0.0, 0.0))
+inlet = Expression(('6.0*x[1]*(1.0-x[1])','0.0'))
 #inlet = Expression(('0.5*sin(x[1]*3.141592654)','0.0'))
-inlet = Constant((1.0, 0.0))
+#inlet = Constant((1.0, 0.0))
 Sw_inlet = Constant(1.0)
 outlet = Constant((1.0,0.0))
-bc = [DirichletBC(GloalFormulation.V['upSw'].sub(0), inlet,  left),
-      DirichletBC(GloalFormulation.V['upSw'].sub(1), Constant(0.0), right),
-      DirichletBC(GloalFormulation.V['upSw'].sub(2), Constant(1.0), left),
+bc = [DirichletBC(GloalFormulation.V['upSw'].sub(0), inlet,  inflow1),
+      DirichletBC(GloalFormulation.V['upSw'].sub(1), Constant(0.0), outflow),
+      DirichletBC(GloalFormulation.V['upSw'].sub(2), Constant(1.0), inflow2),
       DirichletBC(GloalFormulation.V['upSw'].sub(0), noslip, top),
       DirichletBC(GloalFormulation.V['upSw'].sub(0), noslip, bottom)]
 
 
 GloalFormulation.add_pdesubsystem(DarcyGlobal, ['u', 'p', 'Sw'], bcs=bc)
 
-problem.prm['T'] = 0.5
+problem.prm['T'] = 1.5
 problem.solve()
 print "Done"

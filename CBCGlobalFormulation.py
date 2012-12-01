@@ -22,7 +22,7 @@ def allbounds(x):
 qw=Expression("+1.0*exp(-(pow(x[0]-0.25,2) + pow(x[1]-0.25,2))/0.02)")
 qo=Expression("-1.0*exp(-(pow(x[0]-0.75,2) + pow(x[1]-0.75,2))/0.02)")
 
-num_refinements = 0
+num_refinements = 3
 radius = 0.05
 for i in range(num_refinements):
     # Mark cells for refinement
@@ -60,7 +60,7 @@ class DarcyGlobal(PDESubSystem):
         fw = Krw/(Krw+Kro)
         F =  inner(u,v_u)*dx - Dlambda*inner(p, div(v_u))*dx   \
            + inner(div(u),v_p)*dx - (qw+qo)*v_p*dx           \
-           + inner(Sw-Sw_1, v_Sw)/dt*dx - fw*div(u)*v_Sw*dx - qw*v_Sw*dx
+           + inner(Sw-Sw_1, v_Sw)/dt*dx - inner(div(fw*u),v_Sw)*dx - qw*v_Sw*dx
         return F
 
 
